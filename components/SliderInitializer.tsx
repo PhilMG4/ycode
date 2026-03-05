@@ -12,21 +12,14 @@ import type { SliderSettings } from '@/types';
 import {
   buildProductionSwiperOptions,
   applySwiperEasing,
-  injectSwiperCssOverrides,
+  loadSwiperCss,
   configureBulletRenderer,
   syncSliderStateAttributes,
 } from '@/lib/slider-utils';
 
-import 'swiper/css';
-import 'swiper/css/effect-fade';
-import 'swiper/css/effect-cube';
-import 'swiper/css/effect-flip';
-import 'swiper/css/effect-coverflow';
-import 'swiper/css/effect-cards';
-
 export default function SliderInitializer() {
   useEffect(() => {
-    injectSwiperCssOverrides();
+    loadSwiperCss(document);
 
     const sliderElements = document.querySelectorAll<HTMLElement>('[data-slider-id]');
     const swiperInstances: Swiper[] = [];

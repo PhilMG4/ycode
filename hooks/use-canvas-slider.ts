@@ -87,9 +87,25 @@ export function useCanvasSlider(
     if (!isSlider || !elementRef.current) return;
 
     const el = elementRef.current;
-    const options = buildCanvasSwiperOptions(settingsRef.current);
+
+    // Create a hidden ghost element for Swiper's fraction pagination.
+    // Swiper calculates the real page count and renders it here,
+    // so we can read it instead of computing it manually.
+    const ghostEl = document.createElement('div');
+    ghostEl.style.cssText = 'position:absolute!important;color:transparent!important;z-index:-1!important;pointer-events:none!important';
+    el.appendChild(ghostEl);
+
+    const options = buildCanvasSwiperOptions(settingsRef.current, ghostEl);
     const swiper = new Swiper(el, options);
     applySwiperEasing(el, settingsRef.current.easing);
+
+    // Read the page count from Swiper's snap grid and store it
+    const { setSliderSnapCount } = useEditorStore.getState();
+    const syncSnapCount = () => {
+      setSliderSnapCount(layer.id, swiper.snapGrid.length);
+    };
+    swiper.on('update', syncSnapCount);
+    requestAnimationFrame(syncSnapCount);
 
     // Sync nav button disabled state from Swiper's position tracking.
     // Navigation module is disabled on canvas to prevent click-to-navigate,
@@ -144,8 +160,8 @@ export function useCanvasSlider(
 
     const syncBullets = () => {
       if (isFraction) return;
-      const slidesPerView = settingsRef.current.groupSlide || 1;
-      const activeBulletIdx = Math.floor(swiper.realIndex / slidesPerView);
+      const snapCount = swiper.snapGrid.length;
+      const activeSnapIdx = swiper.snapIndex ?? 0;
       const bulletTemplate = layerRef.current.children
         ?.find(c => c.name === 'slidePaginationWrapper')
         ?.children?.find(c => c.name === 'slideBullets')
@@ -153,7 +169,7 @@ export function useCanvasSlider(
       if (!bulletTemplate) return;
       const bulletEls = el.querySelectorAll(`[data-layer-id="${bulletTemplate.id}"]`);
       bulletEls.forEach((b, i) => {
-        if (i === activeBulletIdx) {
+        if (i < snapCount && i === activeSnapIdx) {
           b.setAttribute('aria-current', 'true');
         } else {
           b.removeAttribute('aria-current');
@@ -169,10 +185,8 @@ export function useCanvasSlider(
       if (!fractionLayer) return;
       const fractionEl = el.querySelector(`[data-layer-id="${fractionLayer.id}"]`) as HTMLElement | null;
       if (!fractionEl) return;
-      const slidesPerView = settingsRef.current.groupSlide || 1;
-      const totalSlides = swiper.slides.length;
-      const totalPages = Math.ceil(totalSlides / slidesPerView);
-      const currentPage = Math.floor(swiper.realIndex / slidesPerView) + 1;
+      const totalPages = swiper.snapGrid.length;
+      const currentPage = (swiper.snapIndex ?? 0) + 1;
       fractionEl.textContent = `${currentPage} / ${totalPages}`;
     };
 
@@ -194,6 +208,7 @@ export function useCanvasSlider(
     return () => {
       swiperRegistry.delete(layer.id);
       swiper.destroy(true, true);
+      ghostEl.remove();
       swiperRef.current = null;
       setSliderAnimating(false);
     };

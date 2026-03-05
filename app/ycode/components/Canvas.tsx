@@ -20,6 +20,7 @@ import { serializeLayers, getClassesString } from '@/lib/layer-utils';
 import { collectEditorHiddenLayerIds } from '@/lib/animation-utils';
 import { getCanvasIframeHtml } from '@/lib/canvas-utils';
 import { cn } from '@/lib/utils';
+import { loadSwiperCss } from '@/lib/slider-utils';
 import { useFontsStore } from '@/stores/useFontsStore';
 
 import type { Layer, Component, CollectionItemWithValues, CollectionField, Breakpoint, Asset, ComponentVariable } from '@/types';
@@ -334,11 +335,8 @@ export default function Canvas({
       doc.write(getCanvasIframeHtml('canvas-mount'));
       doc.close();
 
-      // Load Swiper CSS for slider elements in the canvas iframe
-      const swiperCss = doc.createElement('link');
-      swiperCss.rel = 'stylesheet';
-      swiperCss.href = 'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css';
-      doc.head.appendChild(swiperCss);
+      // Load minimal Swiper CSS (no layout overrides that conflict with Tailwind)
+      loadSwiperCss(doc);
 
       // Load GSAP for animations in the canvas iframe
       const gsapScript = doc.createElement('script');

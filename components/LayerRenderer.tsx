@@ -1182,8 +1182,9 @@ const LayerItem: React.FC<{
   // For published pages, children are already resolved server-side
   const baseChildren = (isEditMode && component && component.layers) ? component.layers : layer.children;
 
-  // Replicate the single bullet template for each slide on canvas
-  // All clones keep the original bullet ID so clicking any one selects the real layer
+  // Replicate the single bullet template for each slide on canvas.
+  // The count comes from Swiper's snap grid (set by useCanvasSlider).
+  const sliderSnapCounts = useEditorStore((s) => s.sliderSnapCounts);
   const children = useMemo(() => {
     if (!isEditMode || layer.name !== 'slideBullets' || !baseChildren?.length) return baseChildren;
     const currentPageId = useEditorStore.getState().currentPageId;
@@ -1191,17 +1192,15 @@ const LayerItem: React.FC<{
     const allLayers = usePagesStore.getState().draftsByPageId[currentPageId]?.layers;
     if (!allLayers) return baseChildren;
     const slider = findAncestorByName(allLayers, layer.id, 'slider');
-    const slides = slider?.children?.find(c => c.name === 'slides');
-    const totalSlides = slides?.children?.length || 1;
-    const slidesPerView = slider?.settings?.slider?.groupSlide || 1;
-    const bulletCount = Math.ceil(totalSlides / slidesPerView);
+    if (!slider) return baseChildren;
+    const bulletCount = sliderSnapCounts[slider.id] || slider.children?.find(c => c.name === 'slides')?.children?.length || 1;
     const bulletTemplate = baseChildren[0];
     return Array.from({ length: bulletCount }, (_, i) => ({
       ...bulletTemplate,
       id: bulletTemplate.id,
       _bulletKey: `${bulletTemplate.id}-${i}`,
     }));
-  }, [isEditMode, layer.name, layer.id, baseChildren]);
+  }, [isEditMode, layer.name, layer.id, baseChildren, sliderSnapCounts]);
 
   // For slider layers, strip inactive pagination/navigation children entirely
   const effectiveChildren = useMemo(() => {
@@ -2608,12 +2607,6 @@ const LayerItem: React.FC<{
   // Wrap with context menu in edit mode
   // Don't wrap layers inside component instances (they're not directly editable)
   let content = renderContent();
-
-  // Wrap slide layers in a swiper-slide wrapper so Swiper's enforced styles
-  // don't conflict with the user's design on the actual slide element
-  if (layer.name === 'slide') {
-    content = <div className="swiper-slide">{content}</div>;
-  }
 
   // Wrap with link if layer has link settings (published mode only)
   // In edit mode, links are not interactive to allow layer selection

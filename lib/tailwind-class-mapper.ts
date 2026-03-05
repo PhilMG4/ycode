@@ -616,7 +616,7 @@ export function propertyToClass(
       if (value === '100%') return `${prefix}-full`;
 
       // Use abstracted helper with allowed named values
-      return formatMeasurementClass(value, prefix, ['auto', 'full', 'screen', 'min', 'max', 'fit']);
+      return formatMeasurementClass(value, prefix, ['auto', 'full', 'screen', 'min', 'max', 'fit', 'none']);
     }
 
     // Overflow
@@ -1223,39 +1223,77 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
 
     // ===== SIZING =====
     // Width
-    if (cls.startsWith('w-[')) {
-      const value = extractArbitraryValue(cls);
-      if (value) design.sizing!.width = value;
+    if (cls.startsWith('w-')) {
+      if (cls.startsWith('w-[')) {
+        const value = extractArbitraryValue(cls);
+        if (value) design.sizing!.width = value;
+      } else if (cls === 'w-full') {
+        design.sizing!.width = '100%';
+      } else {
+        const value = cls.slice(2); // strip 'w-'
+        if (value) design.sizing!.width = value;
+      }
     }
 
     // Height
-    if (cls.startsWith('h-[')) {
-      const value = extractArbitraryValue(cls);
-      if (value) design.sizing!.height = value;
+    if (cls.startsWith('h-')) {
+      if (cls.startsWith('h-[')) {
+        const value = extractArbitraryValue(cls);
+        if (value) design.sizing!.height = value;
+      } else if (cls === 'h-full') {
+        design.sizing!.height = '100%';
+      } else {
+        const value = cls.slice(2); // strip 'h-'
+        if (value) design.sizing!.height = value;
+      }
     }
 
     // Min Width
-    if (cls.startsWith('min-w-[')) {
-      const value = extractArbitraryValue(cls);
-      if (value) design.sizing!.minWidth = value;
+    if (cls.startsWith('min-w-')) {
+      if (cls.startsWith('min-w-[')) {
+        const value = extractArbitraryValue(cls);
+        if (value) design.sizing!.minWidth = value;
+      } else {
+        const value = cls.slice(6); // strip 'min-w-'
+        if (value === 'full') design.sizing!.minWidth = '100%';
+        else if (value) design.sizing!.minWidth = value;
+      }
     }
 
     // Min Height
-    if (cls.startsWith('min-h-[')) {
-      const value = extractArbitraryValue(cls);
-      if (value) design.sizing!.minHeight = value;
+    if (cls.startsWith('min-h-')) {
+      if (cls.startsWith('min-h-[')) {
+        const value = extractArbitraryValue(cls);
+        if (value) design.sizing!.minHeight = value;
+      } else {
+        const value = cls.slice(6); // strip 'min-h-'
+        if (value === 'full') design.sizing!.minHeight = '100%';
+        else if (value) design.sizing!.minHeight = value;
+      }
     }
 
     // Max Width
-    if (cls.startsWith('max-w-[')) {
-      const value = extractArbitraryValue(cls);
-      if (value) design.sizing!.maxWidth = value;
+    if (cls.startsWith('max-w-')) {
+      if (cls.startsWith('max-w-[')) {
+        const value = extractArbitraryValue(cls);
+        if (value) design.sizing!.maxWidth = value;
+      } else {
+        const value = cls.slice(6); // strip 'max-w-'
+        if (value === 'full') design.sizing!.maxWidth = '100%';
+        else if (value) design.sizing!.maxWidth = value;
+      }
     }
 
     // Max Height
-    if (cls.startsWith('max-h-[')) {
-      const value = extractArbitraryValue(cls);
-      if (value) design.sizing!.maxHeight = value;
+    if (cls.startsWith('max-h-')) {
+      if (cls.startsWith('max-h-[')) {
+        const value = extractArbitraryValue(cls);
+        if (value) design.sizing!.maxHeight = value;
+      } else {
+        const value = cls.slice(6); // strip 'max-h-'
+        if (value === 'full') design.sizing!.maxHeight = '100%';
+        else if (value) design.sizing!.maxHeight = value;
+      }
     }
 
     // Aspect Ratio

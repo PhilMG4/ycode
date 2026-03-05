@@ -108,6 +108,7 @@ export function isSliderLayerName(name: string): name is SliderLayerName {
 export const SWIPER_CLASS_MAP: Record<string, string> = {
   slider: 'swiper',
   slides: 'swiper-wrapper',
+  slide: 'swiper-slide',
 };
 
 /** Data attributes added to slider nav/pagination elements on production for Swiper targeting */
@@ -149,8 +150,9 @@ export const utilityTemplates: Record<string, BlockTemplate> = {
     template: {
       name: 'slides',
       customName: 'Slides',
-      classes: ['w-full', 'h-full'],
+      classes: ['flex', 'w-full', 'h-full', 'overflow-visible'],
       design: {
+        layout: { isActive: true, display: 'Flex' },
         sizing: { isActive: true, width: '100%', height: '100%' },
       },
       restrictions: { copy: false, delete: false, ancestor: 'slider' },
@@ -164,7 +166,7 @@ export const utilityTemplates: Record<string, BlockTemplate> = {
     template: {
       name: 'slide',
       customName: 'Slide',
-      classes: ['w-full', 'h-full', 'flex', 'flex-col', 'items-center', 'justify-center', 'relative', 'gap-[5px]', 'bg-cover', 'bg-center', 'bg-no-repeat', 'bg-[image:var(--bg-img)]'],
+      classes: ['shrink-0', 'w-full', 'h-full', 'flex', 'flex-col', 'items-center', 'justify-center', 'relative', 'gap-[5px]', 'bg-cover', 'bg-center', 'bg-no-repeat', 'bg-[image:var(--bg-img)]'],
       design: {
         ...SLIDE_BASE_DESIGN,
         backgrounds: { isActive: true, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundImage: '--bg-img', bgImageVars: { '--bg-img': 'url(/ycode/layouts/assets/placeholder-2.webp)' } },
@@ -390,8 +392,9 @@ export const utilityTemplates: Record<string, BlockTemplate> = {
         {
           name: 'slides',
           customName: 'Slides',
-          classes: ['w-full', 'h-full'],
+          classes: ['flex', 'w-full', 'h-full', 'overflow-visible'],
           design: {
+            layout: { isActive: true, display: 'Flex' },
             sizing: { isActive: true, width: '100%', height: '100%' },
           },
           restrictions: { copy: false, delete: false, ancestor: 'slider' },

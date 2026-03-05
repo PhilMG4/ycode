@@ -45,7 +45,7 @@ export function buildBaseSwiperOptions(settings: SliderSettings): SwiperOptions 
 
   const config: SwiperOptions = {
     modules,
-    slidesPerView: settings.groupSlide || 1,
+    slidesPerView: 'auto',
     slidesPerGroup: settings.slidesPerGroup || 1,
     centeredSlides: settings.centered,
     speed: Math.round(parseFloat(settings.duration || '0.5') * 1000),
@@ -107,13 +107,17 @@ export function buildProductionSwiperOptions(settings: SliderSettings): SwiperOp
 /**
  * Build canvas-only Swiper config (all interactions disabled).
  */
-export function buildCanvasSwiperOptions(settings: SliderSettings): SwiperOptions {
+export function buildCanvasSwiperOptions(settings: SliderSettings, ghostPaginationEl: HTMLElement): SwiperOptions {
   const config = buildBaseSwiperOptions(settings);
 
   config.simulateTouch = false;
   config.allowTouchMove = false;
   config.navigation = { enabled: false };
-  config.pagination = { enabled: false };
+  config.pagination = {
+    enabled: true,
+    el: ghostPaginationEl,
+    type: 'fraction',
+  };
   config.autoplay = false;
   config.observer = true;
   config.observeParents = true;
@@ -197,18 +201,13 @@ export function syncSliderStateAttributes(swiper: InstanceType<typeof import('sw
   requestAnimationFrame(syncAll);
 }
 
-/**
- * Inject CSS for Swiper-generated pagination elements and navigation states.
- * Since we don't import swiper/css/navigation or swiper/css/pagination
- * (they conflict with Tailwind), we provide our own minimal styles.
- */
-export function injectSwiperCssOverrides() {
-  const id = 'ycode-swiper-overrides';
-  if (document.getElementById(id)) return;
-  const style = document.createElement('style');
-  style.id = id;
-  style.textContent = `
-    .swiper-button-lock { display: none !important; }
-  `;
-  document.head.appendChild(style);
+/** Load minimal Swiper CSS into an iframe document via <link> tag */
+export function loadSwiperCss(doc: Document) {
+  const id = 'ycode-swiper-css';
+  if (doc.getElementById(id)) return;
+  const link = doc.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href = '/swiper-minimal.css';
+  doc.head.appendChild(link);
 }
