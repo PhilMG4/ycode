@@ -37,6 +37,15 @@ import { Label } from '@/components/ui/label';
 
 type ImportStep = 'upload' | 'mapping' | 'confirm' | 'progress' | 'complete';
 
+function ErrorBanner({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <div className="mt-4 rounded-lg bg-destructive/10 p-3 text-destructive">
+      {message}
+    </div>
+  );
+}
+
 interface ImportStatus {
   id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -79,10 +88,7 @@ export function CSVImportDialog({
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Polling ref
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  // Lock to prevent overlapping process requests
-  const processingLockRef = useRef<boolean>(false);
+  const abortRef = useRef(false);
 
   // Filter out auto-generated and computed fields that shouldn't be mapped
   const mappableFields = fields.filter(
@@ -102,11 +108,7 @@ export function CSVImportDialog({
     setImporting(false);
     setError(null);
 
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    processingLockRef.current = false;
+    abortRef.current = true;
   }, []);
 
   // Handle close — blocked while import is in progress
@@ -192,8 +194,7 @@ export function CSVImportDialog({
     return mapped;
   };
 
-  // Check if at least one column is mapped (not skipped)
-  const hasMappedColumns = Object.values(columnMapping).some(v => v !== '' && v !== SKIP_COLUMN);
+  const hasMappedColumns = getMappedFieldIds().size > 0;
 
   // Start import
   const startImport = async () => {
@@ -228,90 +229,40 @@ export function CSVImportDialog({
     }
   };
 
-  // Trigger batch processing for an import job (with lock to prevent overlapping)
-  const triggerProcessBatch = async (id: string) => {
-    // Skip if already processing
-    if (processingLockRef.current) {
-      return null;
-    }
-
-    processingLockRef.current = true;
-
-    try {
-      const response = await fetch('/ycode/api/collections/import/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ importId: id }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to process import');
-      }
-
-      return data.data;
-    } catch (err) {
-      console.error('Process error:', err);
-      return null;
-    } finally {
-      processingLockRef.current = false;
-    }
-  };
-
-  // Process import (trigger first batch and start polling)
+  // Process import by sequentially triggering batches until complete
   const processImport = async (id: string) => {
-    await triggerProcessBatch(id);
-    pollStatus(id);
-  };
+    abortRef.current = false;
 
-  // Poll for import status
-  const pollStatus = (id: string) => {
-    const poll = async () => {
+    while (!abortRef.current) {
       try {
-        const response = await fetch(`/ycode/api/collections/import/${id}/status`);
+        const response = await fetch('/ycode/api/collections/import/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ importId: id }),
+        });
+
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || 'Failed to get status');
+          throw new Error(data.error || 'Failed to process import');
         }
 
         setImportStatus(data.data);
 
-        // Check if complete
-        if (data.data.status === 'completed' || data.data.status === 'failed') {
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
+        if (data.data.status === 'completed' || data.data.status === 'failed' || data.data.isComplete) {
           setImporting(false);
           setStep('complete');
           onImportComplete?.();
           return;
         }
-
-        // Continue processing if not complete
-        await triggerProcessBatch(id);
       } catch (err) {
-        console.error('Poll error:', err);
+        console.error('Process error:', err);
+        setImporting(false);
+        setStep('complete');
+        return;
       }
-    };
-
-    // Poll every 2 seconds
-    pollingRef.current = setInterval(poll, 2000);
-
-    // Initial poll
-    poll();
+    }
   };
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
-    };
-  }, []);
 
   // Calculate progress percentage
   const progressPercent = importStatus
@@ -367,11 +318,7 @@ export function CSVImportDialog({
               </Button>
             </div>
 
-            {parseError && (
-              <div className="mt-4 rounded-lg bg-destructive/10 p-3 text-destructive">
-                {parseError}
-              </div>
-            )}
+            <ErrorBanner message={parseError} />
           </>
         )}
 
@@ -425,11 +372,7 @@ export function CSVImportDialog({
               </div>
             </div>
 
-            {error && (
-              <div className="mt-4 rounded-lg bg-destructive/10 p-3 text-destructive">
-                {error}
-              </div>
-            )}
+            <ErrorBanner message={error} />
 
             <DialogFooter className="sm:justify-between">
               <Button variant="secondary" onClick={() => setStep('upload')}>
@@ -469,7 +412,7 @@ export function CSVImportDialog({
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Columns mapped</dt>
                     <dd className="font-medium">
-                      {Object.values(columnMapping).filter(v => v !== '' && v !== SKIP_COLUMN).length} of {headers.length}
+                      {getMappedFieldIds().size} of {headers.length}
                     </dd>
                   </div>
                 </dl>
@@ -481,11 +424,7 @@ export function CSVImportDialog({
               </p>
             </div>
 
-            {error && (
-              <div className="mt-4 rounded-lg bg-destructive/10 p-3 text-destructive">
-                {error}
-              </div>
-            )}
+            <ErrorBanner message={error} />
 
             <DialogFooter className="sm:justify-between">
               <Button
@@ -507,7 +446,7 @@ export function CSVImportDialog({
         {step === 'progress' && (
           <>
             <DialogHeader>
-              <DialogTitle>Importing...</DialogTitle>
+              <DialogTitle>Importing data</DialogTitle>
               <DialogDescription>
                 Please do not close this dialog or reload the page.
               </DialogDescription>
@@ -517,38 +456,32 @@ export function CSVImportDialog({
               {/* Progress bar */}
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Progress</span>
+                  <span className="text-muted-foreground">
+                    Processed <span className="text-foreground">{importStatus?.processedRows ?? 0}</span> out of <span className="text-foreground">{importStatus?.totalRows ?? rows.length} items</span>
+                  </span>
                   <span className="font-medium">{progressPercent}%</span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-input">
                   {progressPercent === 0 ? (
                     <div
-                      className="h-full w-1/3 rounded-full bg-secondary"
+                      className="h-full w-1/3 rounded-full bg-primary/70"
                       style={{ animation: 'indeterminate 1.5s ease-in-out infinite' }}
                     />
                   ) : (
                     <div
-                      className="h-full bg-secondary transition-all duration-300"
+                      className="h-full bg-primary/70 transition-all duration-300"
                       style={{ width: `${progressPercent}%` }}
                     />
                   )}
                 </div>
               </div>
 
-              {importStatus && (
+              {importStatus && importStatus.failedRows > 0 && (
                 <dl className="space-y-1">
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Processed</dt>
-                    <dd>
-                      {importStatus.processedRows} of {importStatus.totalRows}
-                    </dd>
+                  <div className="flex justify-between text-destructive">
+                    <dt>Failed</dt>
+                    <dd>{importStatus.failedRows}</dd>
                   </div>
-                  {importStatus.failedRows > 0 && (
-                    <div className="flex justify-between text-destructive">
-                      <dt>Failed</dt>
-                      <dd>{importStatus.failedRows}</dd>
-                    </div>
-                  )}
                 </dl>
               )}
             </div>

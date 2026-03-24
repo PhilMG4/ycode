@@ -33,7 +33,7 @@ import { formatDate } from '@/lib/utils';
 import { formatDateInTimezone } from '@/lib/date-format-utils';
 import { toast } from 'sonner';
 import { useSettingsStore } from '@/stores/useSettingsStore';
-import { slugify, isTruthyBooleanValue, parseMultiReferenceValue } from '@/lib/collection-utils';
+import { slugify, isTruthyBooleanValue, parseMultiReferenceValue, getSortParams } from '@/lib/collection-utils';
 import { getSampleCollectionOptions } from '@/lib/sample-collections';
 import { ASSET_CATEGORIES, getOptimizedImageUrl, isAssetOfType } from '@/lib/asset-utils';
 import { type FieldType, findDisplayField, getItemDisplayName, getFieldIcon, isMultipleAssetField, findStatusFieldId } from '@/lib/collection-field-utils';
@@ -471,13 +471,7 @@ const CMS = React.memo(function CMS() {
   // Check if we're in manual sort mode
   const isManualMode = selectedCollection?.sorting?.direction === 'manual';
 
-  // Extract sorting params for API calls
-  const currentSortBy = selectedCollection?.sorting?.direction === 'manual'
-    ? 'manual'
-    : selectedCollection?.sorting?.field;
-  const currentSortOrder = selectedCollection?.sorting?.direction === 'manual'
-    ? undefined
-    : selectedCollection?.sorting?.direction;
+  const { sortBy: currentSortBy, sortOrder: currentSortOrder } = getSortParams(selectedCollection?.sorting);
 
   // Only show skeleton on initial load when no items are cached for the collection.
   // For subsequent reloads (page change, sort, search), keep showing current data.
@@ -2430,7 +2424,6 @@ const CMS = React.memo(function CMS() {
           collectionId={selectedCollectionId}
           fields={collectionFields}
           onImportComplete={() => {
-            // Refresh collection items after import
             loadItems(selectedCollectionId, currentPage, pageSize, currentSortBy, currentSortOrder);
           }}
         />

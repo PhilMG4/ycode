@@ -71,18 +71,6 @@ export async function insertValuesBulk(
   if (error) {
     throw new Error(`Failed to bulk insert values: ${error.message}`);
   }
-
-  // Compute and store content_hash per item
-  const valuesByItem = new Map<string, Array<{ field_id: string; value: string | null; is_published: boolean }>>();
-  for (const v of values) {
-    const key = v.item_id;
-    if (!valuesByItem.has(key)) valuesByItem.set(key, []);
-    valuesByItem.get(key)!.push({ field_id: v.field_id, value: v.value, is_published: v.is_published ?? false });
-  }
-  for (const [itemId, itemValues] of valuesByItem) {
-    const hash = generateCollectionItemContentHash(itemValues.map(v => ({ field_id: v.field_id, value: v.value })));
-    await updateContentHash(itemId, itemValues[0].is_published, hash);
-  }
 }
 
 export interface UpdateCollectionItemValueData {
@@ -108,8 +96,8 @@ export async function getValuesByItemIds(
     return {};
   }
 
-  // Batch into chunks to avoid exceeding PostgREST URL length limits
-  const CHUNK_SIZE = 200;
+  // Chunk item IDs to stay within PostgREST URL length limits.
+  const CHUNK_SIZE = 100;
   const valuesByItem: Record<string, Record<string, any>> = {};
 
   for (let i = 0; i < item_ids.length; i += CHUNK_SIZE) {
@@ -120,7 +108,8 @@ export async function getValuesByItemIds(
       .select('item_id, field_id, value, collection_fields!inner(type)')
       .in('item_id', chunk)
       .eq('is_published', is_published)
-      .is('deleted_at', null);
+      .is('deleted_at', null)
+      .limit(10000);
 
     if (error) {
       throw new Error(`Failed to fetch item values: ${error.message}`);

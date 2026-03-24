@@ -6,7 +6,7 @@ import {
   updateImportProgress,
   completeImport,
 } from '@/lib/repositories/collectionImportRepository';
-import { createItemsBulk, getMaxIdValue } from '@/lib/repositories/collectionItemRepository';
+import { createItemsBulk, getMaxIdValue, getMaxManualOrder } from '@/lib/repositories/collectionItemRepository';
 import { insertValuesBulk } from '@/lib/repositories/collectionItemValueRepository';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import {
@@ -22,6 +22,7 @@ import {
 } from '@/lib/csv-utils';
 import { uploadFile } from '@/lib/file-upload';
 import { findAssetsByFilenames } from '@/lib/repositories/assetRepository';
+import { generateCollectionItemContentHash } from '@/lib/hash-utils';
 import { noCache } from '@/lib/api-response';
 import { randomUUID } from 'crypto';
 import type { CollectionField } from '@/types';
@@ -31,14 +32,12 @@ interface UploadedAsset {
   publicUrl: string;
 }
 
-/** Extract the base filename (no extension) from a URL. */
+/** Extract a decoded filename from a URL, or empty string if none found. */
 function extractFilenameFromUrl(url: string): string {
   try {
-    const urlPath = new URL(url).pathname;
-    const urlFilename = urlPath.split('/').pop();
-    if (urlFilename && urlFilename.includes('.')) {
-      const decoded = decodeURIComponent(urlFilename);
-      return decoded.replace(/\.[^/.]+$/, '');
+    const segment = new URL(url).pathname.split('/').pop();
+    if (segment && segment.includes('.')) {
+      return decodeURIComponent(segment);
     }
   } catch { /* ignore */ }
   return '';
@@ -59,15 +58,7 @@ async function downloadAndUploadAsset(url: string): Promise<UploadedAsset | null
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
     const blob = await response.blob();
 
-    let filename = '';
-    try {
-      const urlPath = new URL(url).pathname;
-      const urlFilename = urlPath.split('/').pop();
-      if (urlFilename && urlFilename.includes('.')) {
-        filename = decodeURIComponent(urlFilename);
-      }
-    } catch { /* ignore */ }
-
+    let filename = extractFilenameFromUrl(url);
     if (!filename) {
       const ext = contentType.split('/')[1]?.split(';')[0] || 'bin';
       filename = `imported-${Date.now()}.${ext}`;
@@ -111,9 +102,9 @@ interface PendingAssetValue {
 interface PreparedRow {
   rowNumber: number;
   itemId: string;
-  item: { id: string; collection_id: string; manual_order: number; is_published: boolean };
+  item: { id: string; collection_id: string; manual_order: number; is_published: boolean; content_hash?: string };
   values: PreparedValue[];
-  pendingAssets: PendingAssetValue[]; // Asset URLs that need to be downloaded
+  pendingAssets: PendingAssetValue[];
 }
 
 /**
@@ -129,6 +120,7 @@ function prepareRow(
   fieldMap: Map<string, CollectionField>,
   autoFields: { idField?: CollectionField; createdAtField?: CollectionField; updatedAtField?: CollectionField },
   currentMaxId: number,
+  manualOrder: number,
   now: string,
   warnings: string[]
 ): { prepared: PreparedRow; newMaxId: number } {
@@ -190,7 +182,7 @@ function prepareRow(
     prepared: {
       rowNumber,
       itemId,
-      item: { id: itemId, collection_id: collectionId, manual_order: rowNumber - 1, is_published: false },
+      item: { id: itemId, collection_id: collectionId, manual_order: manualOrder, is_published: false },
       values,
       pendingAssets,
     },
@@ -304,8 +296,13 @@ export async function POST(request: NextRequest) {
       updatedAtField: fields.find(f => f.key === AUTO_FIELD_KEYS[2]),
     };
 
-    // Get max ID for auto-increment (1 query)
-    let currentMaxId = await getMaxIdValue(importJob.collection_id, false);
+    // Get max ID and max manual_order in parallel (2 queries)
+    const [currentMaxIdResult, currentMaxOrderResult] = await Promise.all([
+      getMaxIdValue(importJob.collection_id, false),
+      getMaxManualOrder(importJob.collection_id, false),
+    ]);
+    let currentMaxId = currentMaxIdResult;
+    const manualOrderOffset = currentMaxOrderResult + 1;
 
     // Use smaller batches when asset downloads are needed (slower per row)
     const mappedFieldIds = new Set(Object.values(importJob.column_mapping).filter(Boolean));
@@ -335,7 +332,7 @@ export async function POST(request: NextRequest) {
         const { prepared, newMaxId } = prepareRow(
           row, rowNumber, importJob.collection_id,
           importJob.column_mapping, fieldMap, autoFields,
-          currentMaxId, now, errors
+          currentMaxId, manualOrderOffset + startIndex + i, now, errors
         );
         currentMaxId = newMaxId;
         preparedRows.push(prepared);
@@ -379,10 +376,10 @@ export async function POST(request: NextRequest) {
       const urlToFilename = new Map<string, string>();
       const filenamesToCheck: string[] = [];
       for (const url of allUniqueUrls) {
-        const baseName = extractFilenameFromUrl(url);
-        if (baseName) {
-          urlToFilename.set(url, baseName);
-          filenamesToCheck.push(baseName);
+        const filename = extractFilenameFromUrl(url);
+        if (filename) {
+          urlToFilename.set(url, filename);
+          filenamesToCheck.push(filename);
         }
       }
 
@@ -393,8 +390,8 @@ export async function POST(request: NextRequest) {
       const urlsToDownload: string[] = [];
 
       for (const url of allUniqueUrls) {
-        const baseName = urlToFilename.get(url);
-        const existing = baseName ? existingAssets[baseName] : null;
+        const filename = urlToFilename.get(url);
+        const existing = filename ? existingAssets[filename] : null;
         if (existing) {
           urlToUploadedAsset.set(url, { id: existing.id, publicUrl: existing.public_url || url });
         } else {
@@ -403,7 +400,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 3) Download + upload only the URLs not already in the DB (parallel, batched)
-      const ASSET_CONCURRENCY = 5;
+      const ASSET_CONCURRENCY = 10;
       for (let i = 0; i < urlsToDownload.length; i += ASSET_CONCURRENCY) {
         const batch = urlsToDownload.slice(i, i + ASSET_CONCURRENCY);
         const results = await Promise.allSettled(
@@ -451,10 +448,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // --- Phase 2: Bulk insert, with row-by-row fallback on failure ---
+    // --- Phase 2: Compute content hashes and bulk insert ---
+    // Set content_hash on each item before insert (avoids N update queries after)
+    for (const row of preparedRows) {
+      row.item.content_hash = generateCollectionItemContentHash(
+        row.values.map(v => ({ field_id: v.field_id, value: v.value }))
+      );
+    }
+
     if (preparedRows.length > 0) {
       try {
-        // Bulk insert items (1 query)
+        // Bulk insert items with content_hash (1 query)
         await createItemsBulk(preparedRows.map(r => r.item));
 
         // Bulk insert values (1 query)
