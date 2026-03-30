@@ -9,7 +9,7 @@ import { isFieldVariable, isAssetVariable, createDynamicTextVariable, createDyna
 import { generateImageSrcset, getImageSizes, getOptimizedImageUrl, getAssetProxyUrl, DEFAULT_ASSETS, collectLayerAssetIds } from '@/lib/asset-utils';
 import { resolveComponents, applyComponentOverrides } from '@/lib/resolve-components';
 import { isTiptapDoc, hasBlockElementsWithResolver } from '@/lib/tiptap-utils';
-import { DEFAULT_TEXT_STYLES } from '@lib/text-format-utils';
+import { DEFAULT_TEXT_STYLES } from '@/lib/text-format-utils';
 
 // Pagination context passed through to resolveCollectionLayers
 export interface PaginationContext {
