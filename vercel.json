@@ -1,15 +1,30 @@
 {
-  "version": 2,
-  "name": "ycode",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "installCommand": "npm install",
-  "framework": "nextjs",
-  "functions": {
-    "app/ycode/api/**/*.ts": {
-      "maxDuration": 60
-    }
-  }
+    "version": 2,
+    "name": "ycode",
+    "buildCommand": "npm run build",
+    "outputDirectory": ".next",
+    "installCommand": "npm install",
+    "framework": "nextjs",
+    "functions": {
+          "app/ycode/api/**/*.ts": {
+                  "maxDuration": 60
+          }
+    },
+    "redirects": [
+          {
+                  "source": "/protection-et-securite/:slug",
+                  "destination": "/articles/:slug",
+                  "permanent": true
+          },
+          {
+                  "source": "/forces-de-lordre/:slug",
+                  "destination": "/articles/:slug",
+                  "permanent": true
+          },
+          {
+                  "source": "/armee-et-equipement/:slug",
+                  "destination": "/articles/:slug",
+                  "permanent": true
+          }
+    ]
 }
-
-
